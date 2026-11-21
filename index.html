@@ -731,7 +731,14 @@
      (Project settings → Your apps → Web app) in place of null. These keys identify the
      project and are meant to be public; access is controlled by Firestore rules. -->
 <script type="module">
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAw57oCNI8tpI6Lqs7KdoyvI_MGPZDFnYY",
+  authDomain: "trailhead-almanac.firebaseapp.com",
+  projectId: "trailhead-almanac",
+  storageBucket: "trailhead-almanac.firebasestorage.app",
+  messagingSenderId: "164229632017",
+  appId: "1:164229632017:web:fb5a1be5dfd28a2465e1b0"
+};
 
 if (FIREBASE_CONFIG && window.almanac) (async () => {
   const V = '11.10.0';
