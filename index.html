@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trailhead Almanac</title>
+<meta name="description" content="A personal ledger of hikeable weather, one to three days out, for a handful of nearby places. Forecasts from the National Weather Service.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f4efe4;
+    --paper-2: #ebe4d4;
+    --card: #fbf8f1;
+    --ink: #2a2622;
+    --ink-2: #6b625a;
+    --ink-3: #9a9087;
+    --rule: #d9d0bf;
+    --rule-2: #e8e1d2;
+    --accent: #b5651d;
+    --accent-ink: #8a4a12;
+    --contour: rgba(90, 70, 40, 0.10);
+    --shadow: 0 1px 0 rgba(60,45,25,.06), 0 10px 30px -18px rgba(60,45,25,.35);
+    --good: #2f7d4f;
+    --warn: #b8841a;
+    --serious: #c2561a;
+    --critical: #9c2f2f;
+    --skip: #6b625a;
+    --ring-track: #e3dccb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #1a1815;
+      --paper-2: #211e1a;
+      --card: #24211c;
+      --ink: #efe8da;
+      --ink-2: #b4aa9b;
+      --ink-3: #7c7368;
+      --rule: #3a352e;
+      --rule-2: #2f2b25;
+      --accent: #e0914a;
+      --accent-ink: #f0b07a;
+      --contour: rgba(230, 210, 170, 0.07);
+      --shadow: 0 1px 0 rgba(0,0,0,.3), 0 12px 30px -16px rgba(0,0,0,.7);
+      --good: #5fb27f;
+      --warn: #d6a743;
+      --serious: #e07a3c;
+      --critical: #d8625f;
+      --skip: #9a9087;
+      --ring-track: #352f27;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #1a1815; --paper-2: #211e1a; --card: #24211c; --ink: #efe8da; --ink-2: #b4aa9b; --ink-3: #7c7368;
+    --rule: #3a352e; --rule-2: #2f2b25; --accent: #e0914a; --accent-ink: #f0b07a; --contour: rgba(230, 210, 170, 0.07);
+    --shadow: 0 1px 0 rgba(0,0,0,.3), 0 12px 30px -16px rgba(0,0,0,.7);
+    --good: #5fb27f; --warn: #d6a743; --serious: #e07a3c; --critical: #d8625f; --skip: #9a9087; --ring-track: #352f27;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.45;
+    min-height: 100vh;
+    position: relative;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Topographic contours */
+  body::before {
+    content: "";
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='720' height='720' viewBox='0 0 720 720' fill='none' stroke='%23000' stroke-opacity='.9' stroke-width='1'><path d='M40 120c80-60 190-70 260-20s130 40 210-10 150-30 190 40'/><path d='M0 190c90-70 210-80 290-30s150 50 240-10 140-30 190 50'/><path d='M0 260c100-80 240-90 330-30s160 60 260-10 110-20 130 60'/><path d='M120 400c60-40 150-50 210-10s110 30 170-10 110-20 150 30'/><path d='M80 460c80-60 200-70 280-20s140 40 220-10 110-20 140 50'/><path d='M0 530c110-80 260-90 350-30s170 60 280-10 70-10 90 50'/><path d='M200 620c60-40 140-40 190-10s100 30 160-10 120-20 170 20'/><path d='M300 300c40-30 100-30 130 0s60 30 100 0 70-10 90 20'/><path d='M330 330c30-20 80-20 100 0s50 20 80 0 50-10 70 20'/><path d='M440 90c30-20 70-20 90 0s40 10 60-5 40-5 50 15'/></svg>");
+    background-size: 720px 720px;
+    opacity: 1;
+    mask-image: linear-gradient(180deg, rgba(0,0,0,.9), rgba(0,0,0,.35) 60%, rgba(0,0,0,.15));
+    -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.9), rgba(0,0,0,.35) 60%, rgba(0,0,0,.15));
+    filter: var(--contour-filter, none);
+  }
+  body::before { color: var(--contour); }
+  /* stroke color via currentColor isn't possible in data URI; emulate with opacity per theme */
+  body::before { opacity: .55; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body::before { opacity: .22; filter: invert(1); } }
+  :root[data-theme="dark"] body::before { opacity: .22; filter: invert(1); }
+
+  .wrap { position: relative; z-index: 1; max-width: 1080px; margin: 0 auto; padding: 36px 16px 80px; }
+
+  /* ---------- Header ---------- */
+  header { display: grid; grid-template-columns: 1fr auto; gap: 16px 24px; align-items: end; margin-bottom: 28px; }
+  .masthead h1 {
+    font-family: "Fraunces", Georgia, "Times New Roman", serif;
+    font-weight: 400; font-size: clamp(34px, 5.2vw, 56px); line-height: .98; letter-spacing: -.01em;
+    margin: 0 0 8px; font-variation-settings: "opsz" 144, "SOFT" 60;
+  }
+  .masthead h1 em { font-style: italic; color: var(--accent); }
+  .masthead p { margin: 0; color: var(--ink-2); max-width: 54ch; }
+  .meta { color: var(--ink-3); font-size: 13px; text-align: right; }
+  .meta button { font: inherit; color: var(--accent-ink); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+  .meta button:hover { color: var(--accent); }
+
+  /* ---------- Day tabs ---------- */
+  .days { display: flex; gap: 6px; border-bottom: 1px solid var(--rule); margin-bottom: 22px; overflow-x: auto; }
+  .day {
+    appearance: none; background: none; border: 0; cursor: pointer; color: var(--ink-2);
+    padding: 10px 14px 12px; font: inherit; position: relative; white-space: nowrap; text-align: left;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .day b { display: block; font-family: "Fraunces", Georgia, serif; font-weight: 500; font-size: 20px; color: var(--ink); line-height: 1.1; }
+  .day span { font-size: 12.5px; letter-spacing: .02em; text-transform: uppercase; }
+  .day[aria-selected="true"] { border-bottom-color: var(--accent); }
+  .day[aria-selected="true"] span { color: var(--accent-ink); }
+  .day:hover b { color: var(--accent-ink); }
+  .day .best { display: inline-block; margin-left: 8px; font-size: 11px; padding: 2px 6px; border-radius: 10px; background: var(--paper-2); color: var(--ink-2); vertical-align: 2px; }
+
+  /* ---------- Add bar ---------- */
+  .addbar { position: relative; display: flex; gap: 10px; align-items: center; margin-bottom: 24px; }
+  .addbar .field {
+    flex: 1; display: flex; align-items: center; gap: 10px;
+    background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 10px 14px; box-shadow: var(--shadow);
+  }
+  .addbar input {
+    flex: 1; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 15px; outline: none; min-width: 0;
+  }
+  .addbar input::placeholder { color: var(--ink-3); }
+  .addbar svg { color: var(--ink-3); flex: none; }
+  .addbar .hint { color: var(--ink-3); font-size: 12.5px; white-space: nowrap; }
+  .results {
+    position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 20;
+    background: var(--card); border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden;
+  }
+  .results button {
+    display: block; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--rule-2);
+    padding: 10px 14px; font: inherit; color: var(--ink); cursor: pointer;
+  }
+  .results button:first-child { border-top: 0; }
+  .results button:hover, .results button:focus { background: var(--paper-2); outline: none; }
+  .results small { display: block; color: var(--ink-3); font-size: 12px; }
+  .results .status { padding: 10px 14px; color: var(--ink-2); font-size: 13.5px; }
+
+  /* ---------- Cards ---------- */
+  .ledger { display: grid; gap: 14px; }
+  .card {
+    display: grid; grid-template-columns: 128px 1fr; gap: 0 22px;
+    background: var(--card); border: 1px solid var(--rule); border-radius: 16px; padding: 18px 20px 16px 18px;
+    box-shadow: var(--shadow); position: relative; overflow: hidden;
+    transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s;
+  }
+  .card:hover { transform: translateY(-1px); }
+  .card .rank {
+    position: absolute; top: 12px; left: 14px; font-family: "Fraunces", Georgia, serif; font-style: italic; font-size: 13px; color: var(--ink-3);
+  }
+  .card .remove {
+    position: absolute; top: 10px; right: 10px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: transparent; color: var(--ink-3);
+    cursor: pointer; opacity: 0; transition: opacity .2s, background .2s; display: grid; place-items: center;
+  }
+  .card:hover .remove, .card:focus-within .remove { opacity: 1; }
+  .card .remove:hover { background: var(--paper-2); color: var(--critical); }
+
+  .medallion { display: grid; place-items: center; align-self: start; padding-top: 10px; }
+  .medallion svg { width: 120px; height: 120px; display: block; overflow: visible; }
+  .medallion .score { font-family: "Fraunces", Georgia, serif; font-weight: 500; font-size: 30px; fill: var(--ink); }
+  .medallion .score-sub { font-family: "Inter", system-ui, sans-serif; font-size: 9.5px; letter-spacing: .12em; fill: var(--ink-2); text-transform: uppercase; }
+
+  .body { min-width: 0; }
+  .titleline { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 2px; }
+  .name {
+    font-family: "Fraunces", Georgia, serif; font-weight: 500; font-size: 26px; line-height: 1.1; margin: 0; letter-spacing: -.005em;
+    cursor: text; border-bottom: 1px dashed transparent;
+  }
+  .name:hover { border-bottom-color: var(--rule); }
+  .name[contenteditable="true"] { outline: none; border-bottom-color: var(--accent); }
+  .verdict { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; letter-spacing: .02em; }
+  .verdict i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; display: inline-block; }
+  .place { color: var(--ink-3); font-size: 12.5px; margin: 0 0 10px; }
+
+  .stats { display: flex; gap: 22px; flex-wrap: wrap; margin-bottom: 10px; }
+  .stat { display: flex; align-items: baseline; gap: 6px; }
+  .stat .v { font-family: "Fraunces", Georgia, serif; font-size: 22px; font-weight: 400; line-height: 1; }
+  .stat .v small { font-size: 15px; color: var(--ink-2); }
+  .stat .k { color: var(--ink-3); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  .stat svg { color: var(--ink-3); align-self: center; }
+
+  .forecast { color: var(--ink-2); font-size: 14px; margin: 0 0 12px; max-width: 72ch; }
+
+  .ribbon { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; align-items: end; height: 42px; }
+  .ribbon .h { position: relative; height: 100%; display: flex; align-items: flex-end; }
+  .ribbon .h .bar { width: 100%; border-radius: 3px 3px 1px 1px; min-height: 5px; opacity: .95; }
+  .ribbon .h .pop { position: absolute; left: 0; right: 0; bottom: 0; background: repeating-linear-gradient(135deg, rgba(60,90,130,.55) 0 2px, transparent 2px 5px); border-radius: 3px 3px 1px 1px; }
+  .ribbon-labels { display: grid; grid-template-columns: repeat(12, 1fr); margin-top: 4px; }
+  .ribbon-labels span { font-size: 11px; color: var(--ink-3); }
+  .ribbon-labels span:nth-child(3n+2) { text-align: center; }
+  .ribbon-legend { margin-top: 6px; font-size: 11.5px; color: var(--ink-3); display: flex; gap: 14px; flex-wrap: wrap; }
+  .ribbon-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+
+  .card.loading .body, .card.loading .medallion { opacity: .55; }
+  .card .err { color: var(--critical); font-size: 13.5px; }
+
+  .empty {
+    text-align: center; color: var(--ink-2); padding: 60px 20px; border: 1px dashed var(--rule); border-radius: 16px; background: color-mix(in srgb, var(--card) 60%, transparent);
+  }
+  .empty h2 { font-family: "Fraunces", Georgia, serif; font-weight: 400; font-size: 26px; margin: 0 0 8px; color: var(--ink); }
+  .empty p { margin: 0; }
+
+  footer { margin-top: 36px; color: var(--ink-3); font-size: 12.5px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  footer a { color: inherit; }
+  .how { margin-top: 10px; font-size: 12.5px; color: var(--ink-3); }
+  .how summary { cursor: pointer; color: var(--ink-2); }
+  .how p { margin: 6px 0 0; max-width: 80ch; }
+
+  @media (max-width: 640px) {
+    header { grid-template-columns: 1fr; }
+    .meta { text-align: left; }
+    .card { grid-template-columns: 1fr; gap: 10px; padding: 16px; }
+    .medallion { justify-self: start; padding: 0; margin-top: 14px; }
+    .medallion svg { width: 104px; height: 104px; }
+    .addbar .hint { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="masthead">
+      <h1>Trailhead <em>Almanac</em></h1>
+      <p>Where the weather will be kind, one to three days out. Keep an eye on a few places within reach and let the best sky pick the hike.</p>
+    </div>
+    <div class="meta" id="meta">
+      <span id="updated">—</span> · <button id="refresh" type="button">refresh</button> · <button id="theme" type="button">theme</button> · <button id="share" type="button" title="Copy a link that carries your places to another device">copy link with places</button>
+    </div>
+  </header>
+
+  <div class="days" role="tablist" id="days"></div>
+
+  <div class="addbar">
+    <div class="field">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      <input id="q" type="text" placeholder="Add a place: a town, a park, a trailhead, or “45.37, -121.70”" autocomplete="off" spellcheck="false">
+      <span class="hint">Enter to search</span>
+    </div>
+    <div class="results" id="results" hidden></div>
+  </div>
+
+  <div class="ledger" id="ledger"></div>
+
+  <details class="how">
+    <summary>How the hike score is figured</summary>
+    <p>Each day is judged on its daylight hours (7am–7pm, local to the place). It starts at 100 and loses points for the chance of rain or snow, for wind over about 10&nbsp;mph, for highs above 85°F or below 40°F, for frosty mornings, and extra for thunderstorms, snow and fog. 80 and up is <b>Prime</b>, 60 is <b>Good</b>, 40 is <b>Fair</b>, 20 is <b>Poor</b>, below that <b>Skip</b>. Places are listed best first for the selected day.</p>
+  </details>
+
+  <footer>
+    <span>Forecasts: <a href="https://www.weather.gov/" target="_blank" rel="noopener">National Weather Service</a> (api.weather.gov). Place search: OpenStreetMap Nominatim.</span>
+    <span>Your places are saved in this browser only.</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const NWS = 'https://api.weather.gov';
+  const STORE_KEY = 'ta.locations.v1';
+  const CACHE_PREFIX = 'ta.cache.v1.';
+  const CACHE_TTL = 30 * 60 * 1000;
+  const DAY_START = 7, DAY_END = 18; // inclusive hours of daylight considered
+
+  const $ = (s, el = document) => el.querySelector(s);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') n.className = v;
+      else if (k === 'html') n.innerHTML = v;
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else if (v !== null && v !== undefined) n.setAttribute(k, v);
+    }
+    for (const k of kids) if (k !== null && k !== undefined) n.append(k);
+    return n;
+  };
+
+  // ---------- state ----------
+  let locations = load(STORE_KEY, []);
+  let selectedDay = 1; // 1..3 days out
+  const data = new Map(); // id -> { point, forecast, hourly, fetchedAt } | { error }
+
+  function load(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
+  function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  const uid = () => Math.random().toString(36).slice(2, 10);
+
+  // ---------- theme ----------
+  $('#theme').addEventListener('click', () => {
+    const root = document.documentElement;
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const cur = root.dataset.theme || (dark ? 'dark' : 'light');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next; save('ta.theme', next);
+  });
+  { const t = load('ta.theme', null); if (t) document.documentElement.dataset.theme = t; }
+
+  // ---------- fetch helpers ----------
+  async function getJSON(url, tries = 3) {
+    let lastErr;
+    for (let i = 0; i < tries; i++) {
+      try {
+        const r = await fetch(url, { headers: { 'Accept': 'application/geo+json, application/json' } });
+        if (r.status === 404) { const e = new Error('Not found'); e.status = 404; throw e; }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return await r.json();
+      } catch (e) {
+        lastErr = e;
+        if (e.status === 404) break;
+        await new Promise(res => setTimeout(res, 600 * (i + 1)));
+      }
+    }
+    throw lastErr;
+  }
+
+  async function resolvePoint(loc) {
+    if (loc.point) return loc.point;
+    const j = await getJSON(`${NWS}/points/${loc.lat.toFixed(4)},${loc.lon.toFixed(4)}`);
+    const p = j.properties;
+    const rl = p.relativeLocation && p.relativeLocation.properties;
+    loc.point = {
+      forecast: p.forecast, hourly: p.forecastHourly, tz: p.timeZone,
+      near: rl ? `${rl.city}, ${rl.state}` : '', office: p.gridId
+    };
+    save(STORE_KEY, locations);
+    return loc.point;
+  }
+
+  async function loadLocation(loc, force = false) {
+    const cached = load(CACHE_PREFIX + loc.id, null);
+    if (!force && cached && Date.now() - cached.fetchedAt < CACHE_TTL && loc.point) {
+      data.set(loc.id, { ...cached, point: loc.point });
+      return;
+    }
+    data.set(loc.id, { loading: true, ...(cached || {}), point: loc.point });
+    render();
+    try {
+      const point = await resolvePoint(loc);
+      const [forecast, hourly] = await Promise.all([getJSON(point.forecast), getJSON(point.hourly)]);
+      const rec = { point, forecast: forecast.properties, hourly: hourly.properties, fetchedAt: Date.now() };
+      data.set(loc.id, rec);
+      save(CACHE_PREFIX + loc.id, { forecast: rec.forecast, hourly: rec.hourly, fetchedAt: rec.fetchedAt });
+    } catch (e) {
+      const msg = e.status === 404
+        ? 'Outside National Weather Service coverage (US only).'
+        : `Couldn’t reach the forecast service (${e.message}). Try refresh.`;
+      data.set(loc.id, { error: msg, point: loc.point, ...(cached ? { forecast: cached.forecast, hourly: cached.hourly, fetchedAt: cached.fetchedAt } : {}) });
+    }
+    render();
+  }
+
+  async function loadAll(force = false) {
+    await Promise.all(locations.map(l => loadLocation(l, force)));
+    render();
+  }
+
+  // ---------- dates ----------
+  function localDateKey(date, tz) {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+    } catch { return date.toISOString().slice(0, 10); }
+  }
+  function dayKeys(tz) {
+    const now = new Date();
+    return [1, 2, 3].map(i => localDateKey(new Date(now.getTime() + i * 86400000), tz));
+  }
+  function dayLabel(offset) {
+    const d = new Date(Date.now() + offset * 86400000);
+    const wd = d.toLocaleDateString(undefined, { weekday: 'long' });
+    const md = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return { title: offset === 1 ? 'Tomorrow' : wd, sub: offset === 1 ? `${wd.slice(0, 3)} · ${md}` : md };
+  }
+
+  // ---------- weather interpretation ----------
+  const CATS = ['storm', 'snow', 'rain', 'fog', 'cloudy', 'partly', 'clear'];
+  function categorize(txt = '') {
+    const t = txt.toLowerCase();
+    if (/thunder|t-storm|tstorm/.test(t)) return 'storm';
+    if (/freezing fog/.test(t)) return 'fog';
+    if (/snow|sleet|ice|freezing|flurr|wintry|blizzard/.test(t)) return 'snow';
+    if (/rain|shower|drizzle|precip/.test(t)) return 'rain';
+    if (/fog|haze|smoke|mist/.test(t)) return 'fog';
+    if (/mostly cloudy|cloudy|overcast/.test(t)) return 'cloudy';
+    if (/partly|mostly sunny|mostly clear|scattered/.test(t)) return 'partly';
+    return 'clear';
+  }
+  const CAT_COLORS = {
+    clear: ['#f3c04a', '#e8913a'], partly: ['#f0d591', '#9fb8c9'], cloudy: ['#b8c2cc', '#7f8b96'],
+    fog: ['#d8d6cf', '#a8a69e'], rain: ['#7f9fb8', '#4c6b86'], snow: ['#e7eef5', '#b4c3d1'], storm: ['#6a6f8a', '#3b3f55']
+  };
+  const CAT_NAMES = { clear: 'Clear', partly: 'Partly cloudy', cloudy: 'Cloudy', fog: 'Fog or haze', rain: 'Rain', snow: 'Snow or ice', storm: 'Thunderstorms' };
+
+  function parseWind(s) { // "10 mph" or "5 to 15 mph"
+    if (!s) return 0; const m = String(s).match(/(\d+)(?:\s*to\s*(\d+))?/); if (!m) return 0; return Number(m[2] || m[1]);
+  }
+  function pop(p) { return p && p.probabilityOfPrecipitation && p.probabilityOfPrecipitation.value != null ? p.probabilityOfPrecipitation.value : 0; }
+
+  function summarizeDay(rec, key) {
+    const hours = (rec.hourly.periods || []).filter(p => p.startTime.slice(0, 10) === key)
+      .map(p => ({ ...p, hour: Number(p.startTime.slice(11, 13)) }))
+      .filter(p => p.hour >= DAY_START && p.hour <= DAY_END);
+    if (!hours.length) return null;
+    const temps = hours.map(h => h.temperature);
+    const pops = hours.map(pop);
+    const winds = hours.map(h => parseWind(h.windSpeed));
+    const counts = {}; for (const h of hours) { const c = categorize(h.shortForecast); counts[c] = (counts[c] || 0) + 1; }
+    let cat;
+    if (counts.storm) cat = 'storm';
+    else if ((counts.snow || 0) >= 2) cat = 'snow';
+    else if ((counts.rain || 0) >= 3) cat = 'rain';
+    else cat = Object.entries(counts).sort((a, b) => b[1] - a[1] || CATS.indexOf(a[0]) - CATS.indexOf(b[0]))[0][0];
+
+    const period = (rec.forecast.periods || []).find(p => p.isDaytime && p.startTime.slice(0, 10) === key);
+    const hi = Math.max(...temps), lo = Math.min(...temps);
+    const popMax = Math.max(...pops), popAvg = pops.reduce((a, b) => a + b, 0) / pops.length;
+    const windMax = Math.max(...winds);
+    const rh = hours.map(h => h.relativeHumidity && h.relativeHumidity.value).filter(v => v != null);
+    const humidity = rh.length ? Math.round(rh.reduce((a, b) => a + b, 0) / rh.length) : null;
+
+    let s = 100;
+    s -= popMax * 0.55 + popAvg * 0.35;
+    if (windMax > 10) s -= (windMax - 10) * 1.6;
+    if (hi > 85) s -= (hi - 85) * 2;
+    if (hi < 40) s -= (40 - hi) * 1.5;
+    if (lo < 32) s -= (32 - lo) * 0.8;
+    if (cat === 'storm') s -= 35; else if (cat === 'snow') s -= 20; else if (cat === 'fog') s -= 8; else if (cat === 'cloudy') s -= 4;
+    const score = Math.round(Math.max(0, Math.min(100, s)));
+    const verdict = score >= 80 ? ['Prime', 'good'] : score >= 60 ? ['Good', 'good'] : score >= 40 ? ['Fair', 'warn'] : score >= 20 ? ['Poor', 'serious'] : ['Skip', 'critical'];
+
+    return { hours, hi, lo, popMax: Math.round(popMax), popAvg, windMax, humidity, cat, score, verdict,
+      text: period ? period.detailedForecast : (hours[Math.floor(hours.length / 2)].shortForecast),
+      short: period ? period.shortForecast : hours[Math.floor(hours.length / 2)].shortForecast,
+      name: period ? period.name : '' };
+  }
+
+  // ---------- icons ----------
+  const I = {
+    sun: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    partly: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 5V3M3.2 7.2l1.4 1.4M3 12H1M12.8 7.2l-1.4 1.4"/><path d="M5.2 13.5A3.5 3.5 0 0 1 11 9.6"/><path d="M8 20h9a3.5 3.5 0 0 0 .5-7A5 5 0 0 0 8 14a3 3 0 0 0 0 6z"/></svg>',
+    cloud: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7 19h10a4 4 0 0 0 .6-8A6 6 0 0 0 6 12.5 3.3 3.3 0 0 0 7 19z"/></svg>',
+    fog: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7 15h10a4 4 0 0 0 .6-8A6 6 0 0 0 6 8.5 3.3 3.3 0 0 0 7 15z"/><path d="M5 19h9M10 22h9"/></svg>',
+    rain: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7 15h10a4 4 0 0 0 .6-8A6 6 0 0 0 6 8.5 3.3 3.3 0 0 0 7 15z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></svg>',
+    snow: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7 14h10a4 4 0 0 0 .6-8A6 6 0 0 0 6 7.5 3.3 3.3 0 0 0 7 14z"/><path d="M8 18v.01M12 20v.01M16 18v.01M10 22v.01M14 22v.01"/></svg>',
+    storm: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14h10a4 4 0 0 0 .6-8A6 6 0 0 0 6 7.5 3.3 3.3 0 0 0 7 14z"/><path d="M12 14l-2 4h3l-2 4"/></svg>',
+    wind: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7a2 2 0 1 1-2 2"/></svg>',
+    drop: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>',
+    temp: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M10 14.5V5a2 2 0 1 1 4 0v9.5a3.5 3.5 0 1 1-4 0z"/></svg>',
+    humid: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 9c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 15c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>',
+    x: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+  };
+  const CAT_ICON = { clear: I.sun, partly: I.partly, cloudy: I.cloud, fog: I.fog, rain: I.rain, snow: I.snow, storm: I.storm };
+
+  function medallion(day, id) {
+    const r = 50, c = 2 * Math.PI * r;
+    const [a, b] = CAT_COLORS[day ? day.cat : 'cloudy'];
+    const score = day ? day.score : 0;
+    const tone = day ? `var(--${day.verdict[1]})` : 'var(--ring-track)';
+    const dash = (score / 100) * c;
+    return `
+      <svg viewBox="0 0 120 120" role="img" aria-label="${day ? `Hike score ${score}, ${day.verdict[0]}, ${CAT_NAMES[day.cat]}` : 'No forecast'}">
+        <defs>
+          <radialGradient id="g-${id}" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></radialGradient>
+        </defs>
+        <circle cx="60" cy="60" r="${r}" fill="none" stroke="var(--ring-track)" stroke-width="5"/>
+        <circle cx="60" cy="60" r="${r}" fill="none" stroke="${tone}" stroke-width="5" stroke-linecap="round"
+          stroke-dasharray="${dash.toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 60 60)"/>
+        <circle cx="60" cy="60" r="40" fill="url(#g-${id})"/>
+        <circle cx="60" cy="60" r="40" fill="none" stroke="rgba(0,0,0,.08)"/>
+        <text x="60" y="63" text-anchor="middle" class="score" fill="${day && (day.cat === 'storm' || day.cat === 'rain') ? '#fff' : '#2a2622'}" style="fill:${day && (day.cat === 'storm' || day.cat === 'rain') ? '#fff' : '#2a2622'}">${day ? score : '–'}</text>
+        <text x="60" y="78" text-anchor="middle" class="score-sub" style="fill:${day && (day.cat === 'storm' || day.cat === 'rain') ? 'rgba(255,255,255,.8)' : '#5a524a'}">${day ? 'hike score' : 'no data'}</text>
+      </svg>`;
+  }
+
+  function ribbon(day) {
+    const hours = day.hours;
+    const cells = [];
+    for (let h = DAY_START; h <= DAY_END; h++) {
+      const p = hours.find(x => x.hour === h);
+      if (!p) { cells.push('<div class="h"></div>'); continue; }
+      const cat = categorize(p.shortForecast);
+      const pp = pop(p);
+      const t = p.temperature;
+      const height = Math.max(12, Math.min(100, ((t - 5) / 95) * 100));
+      const title = `${fmtHour(h)} · ${t}° · ${p.shortForecast} · ${pp}% precip · wind ${p.windSpeed || '—'}`;
+      cells.push(`<div class="h" title="${title.replace(/"/g, '&quot;')}"><div class="bar" style="height:${height}%;background:linear-gradient(180deg,${CAT_COLORS[cat][0]},${CAT_COLORS[cat][1]})"></div>${pp >= 20 ? `<div class="pop" style="height:${Math.max(6, pp)}%"></div>` : ''}</div>`);
+    }
+    const labels = []; for (let h = DAY_START; h <= DAY_END; h++) labels.push(`<span>${(h - DAY_START) % 3 === 0 ? fmtHour(h) : ''}</span>`);
+    const seen = [...new Set(hours.map(h => categorize(h.shortForecast)))].sort((a, b) => CATS.indexOf(a) - CATS.indexOf(b));
+    const legend = seen.map(c => `<span><i style="background:linear-gradient(180deg,${CAT_COLORS[c][0]},${CAT_COLORS[c][1]})"></i>${CAT_NAMES[c]}</span>`).join('')
+      + (hours.some(h => pop(h) >= 20) ? `<span><i style="background:repeating-linear-gradient(135deg, rgba(60,90,130,.55) 0 2px, transparent 2px 5px)"></i>Chance of precip</span>` : '');
+    return `<div class="ribbon">${cells.join('')}</div><div class="ribbon-labels">${labels.join('')}</div><div class="ribbon-legend">${legend}<span style="margin-left:auto">Bar height follows temperature</span></div>`;
+  }
+  function fmtHour(h) { return h === 12 ? '12p' : h > 12 ? `${h - 12}p` : `${h}a`; }
+
+  // ---------- render ----------
+  function render() {
+    renderDays();
+    const ledger = $('#ledger');
+    ledger.replaceChildren();
+    if (!locations.length) {
+      ledger.append(el('div', { class: 'empty' },
+        el('h2', {}, 'No places yet'),
+        el('p', {}, 'Search for a town, park or trailhead above. Try a few places at different elevations or on either side of a ridge.')));
+      $('#updated').textContent = '—';
+      return;
+    }
+    const rows = locations.map(loc => {
+      const rec = data.get(loc.id);
+      let day = null;
+      if (rec && rec.hourly && rec.point) { const keys = dayKeys(rec.point.tz); day = summarizeDay(rec, keys[selectedDay - 1]); }
+      return { loc, rec, day };
+    });
+    rows.sort((a, b) => (b.day ? b.day.score : -1) - (a.day ? a.day.score : -1));
+    rows.forEach((r, i) => ledger.append(card(r, i)));
+
+    const times = [...data.values()].map(d => d.fetchedAt).filter(Boolean);
+    if (times.length) {
+      const age = Math.round((Date.now() - Math.min(...times)) / 60000);
+      $('#updated').textContent = age < 1 ? 'updated just now' : `updated ${age} min ago`;
+    } else $('#updated').textContent = [...data.values()].some(d => d.loading) ? 'loading…' : 'no forecast loaded';
+  }
+
+  function renderDays() {
+    const wrap = $('#days'); wrap.replaceChildren();
+    for (const off of [1, 2, 3]) {
+      const { title, sub } = dayLabel(off);
+      let best = null;
+      for (const loc of locations) {
+        const rec = data.get(loc.id);
+        if (rec && rec.hourly && rec.point) { const d = summarizeDay(rec, dayKeys(rec.point.tz)[off - 1]); if (d && (!best || d.score > best.score)) best = { score: d.score, name: loc.name }; }
+      }
+      const btn = el('button', { class: 'day', role: 'tab', 'aria-selected': String(off === selectedDay), onclick: () => { selectedDay = off; render(); } },
+        el('b', {}, title, best ? el('span', { class: 'best', title: `Best place: ${best.name}` }, `best ${best.score}`) : null),
+        el('span', {}, sub));
+      wrap.append(btn);
+    }
+  }
+
+  function card({ loc, rec, day }, index) {
+    const c = el('article', { class: 'card' + (rec && rec.loading ? ' loading' : '') });
+    const ordinal = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'][index] || `${index + 1}th`;
+    c.append(el('span', { class: 'rank' }, day ? ordinal : ''));
+    c.append(el('button', { class: 'remove', title: 'Remove place', 'aria-label': `Remove ${loc.name}`, html: I.x, onclick: () => removeLocation(loc.id) }));
+    c.append(el('div', { class: 'medallion', html: medallion(day, loc.id) }));
+
+    const body = el('div', { class: 'body' });
+    const name = el('h2', { class: 'name', title: 'Click to rename' }, loc.name);
+    name.addEventListener('click', () => { if (name.contentEditable !== 'true') { name.contentEditable = 'true'; name.focus(); document.getSelection().selectAllChildren(name); } });
+    name.addEventListener('blur', () => { name.contentEditable = 'false'; const v = name.textContent.trim(); if (v && v !== loc.name) { loc.name = v; save(STORE_KEY, locations); render(); } else name.textContent = loc.name; });
+    name.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } if (e.key === 'Escape') { name.textContent = loc.name; name.blur(); } });
+    const title = el('div', { class: 'titleline' }, name);
+    if (day) title.append(el('span', { class: 'verdict', style: `color: var(--${day.verdict[1]})` }, el('i'), `${day.verdict[0]} · ${CAT_NAMES[day.cat]}`));
+    body.append(title);
+
+    const near = rec && rec.point && rec.point.near ? `near ${rec.point.near} · ` : '';
+    const elev = rec && rec.forecast && rec.forecast.elevation && rec.forecast.elevation.value != null ? ` · ${Math.round(rec.forecast.elevation.value * 3.28084).toLocaleString()} ft` : '';
+    body.append(el('p', { class: 'place' }, `${near}${loc.lat.toFixed(3)}, ${loc.lon.toFixed(3)}${elev}`));
+
+    if (rec && rec.error && !day) {
+      body.append(el('p', { class: 'err' }, rec.error));
+    } else if (!day) {
+      body.append(el('p', { class: 'forecast' }, rec && rec.loading ? 'Fetching the forecast…' : 'No daytime forecast available for this day yet.'));
+    } else {
+      const stats = el('div', { class: 'stats' });
+      stats.append(stat(I.temp, `${day.hi}°<small> / ${day.lo}°</small>`, 'high / morning'));
+      stats.append(stat(I.drop, `${day.popMax}<small>%</small>`, 'chance precip'));
+      stats.append(stat(I.wind, `${day.windMax}<small> mph</small>`, 'wind, up to'));
+      if (day.humidity != null) stats.append(stat(I.humid, `${day.humidity}<small>%</small>`, 'humidity'));
+      body.append(stats);
+      body.append(el('p', { class: 'forecast' }, day.text));
+      body.append(el('div', { html: ribbon(day) }));
+      if (rec.error) body.append(el('p', { class: 'err', style: 'margin-top:8px' }, `Showing cached forecast. ${rec.error}`));
+    }
+    c.append(body);
+    return c;
+  }
+  function stat(icon, v, k) {
+    const s = el('div', { class: 'stat' });
+    s.append(el('span', { html: icon }), el('span', { class: 'v', html: v }), el('span', { class: 'k' }, k));
+    return s;
+  }
+
+  // ---------- locations ----------
+  function addLocation(name, lat, lon) {
+    const loc = { id: uid(), name, lat, lon };
+    locations.push(loc); save(STORE_KEY, locations);
+    render(); loadLocation(loc, true);
+  }
+  function removeLocation(id) {
+    const loc = locations.find(l => l.id === id);
+    if (!loc || !confirm(`Remove ${loc.name}?`)) return;
+    locations = locations.filter(l => l.id !== id); save(STORE_KEY, locations);
+    try { localStorage.removeItem(CACHE_PREFIX + id); } catch {}
+    data.delete(id); render();
+  }
+
+  // ---------- search ----------
+  const q = $('#q'), results = $('#results');
+  let searchTimer;
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); search(q.value); } if (e.key === 'Escape') hideResults(); });
+  q.addEventListener('input', () => { clearTimeout(searchTimer); if (q.value.trim().length >= 3) searchTimer = setTimeout(() => search(q.value), 650); else hideResults(); });
+  document.addEventListener('click', e => { if (!e.target.closest('.addbar')) hideResults(); });
+  function hideResults() { results.hidden = true; results.replaceChildren(); }
+  function showStatus(msg) { results.hidden = false; results.replaceChildren(el('div', { class: 'status' }, msg)); }
+
+  async function search(text) {
+    text = text.trim(); if (!text) return;
+    const m = text.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
+    if (m) {
+      const lat = Number(m[1]), lon = Number(m[2]);
+      results.hidden = false;
+      results.replaceChildren(el('button', { type: 'button', onclick: () => { addLocation(`${lat.toFixed(3)}, ${lon.toFixed(3)}`, lat, lon); q.value = ''; hideResults(); } },
+        `Add point ${lat.toFixed(4)}, ${lon.toFixed(4)}`, el('small', {}, 'You can rename it afterwards')));
+      return;
+    }
+    showStatus('Searching…');
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=us&q=${encodeURIComponent(text)}`;
+      const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const list = await r.json();
+      if (!list.length) { showStatus('Nothing found. Try adding a state, or paste coordinates like “44.42, -121.78”.'); return; }
+      results.hidden = false; results.replaceChildren();
+      for (const it of list) {
+        const parts = it.display_name.split(', ');
+        const short = parts[0];
+        const rest = parts.slice(1, 4).join(', ');
+        results.append(el('button', { type: 'button', onclick: () => { addLocation(short, Number(it.lat), Number(it.lon)); q.value = ''; hideResults(); } },
+          short, el('small', {}, `${rest}${it.type ? ` · ${it.type.replace(/_/g, ' ')}` : ''}`)));
+      }
+    } catch (e) {
+      showStatus(`Place search is unavailable right now (${e.message}). You can paste coordinates like “44.42, -121.78” instead.`);
+    }
+  }
+
+  // ---------- carry places between devices via the URL hash ----------
+  function placesLink() {
+    const packed = locations.map(l => [l.name, +l.lat.toFixed(4), +l.lon.toFixed(4)]);
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(packed)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return `${location.origin}${location.pathname}#p=${b64}`;
+  }
+  function importFromHash() {
+    const m = location.hash.match(/^#p=([A-Za-z0-9_-]+)/);
+    if (!m) return;
+    try {
+      const json = decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))));
+      const list = JSON.parse(json);
+      let added = 0;
+      for (const item of list) {
+        if (!Array.isArray(item) || item.length < 3) continue;
+        const [name, lat, lon] = item;
+        if (typeof lat !== 'number' || typeof lon !== 'number' || !isFinite(lat) || !isFinite(lon)) continue;
+        const dup = locations.some(l => Math.abs(l.lat - lat) < 0.002 && Math.abs(l.lon - lon) < 0.002);
+        if (!dup) { locations.push({ id: uid(), name: String(name).slice(0, 60) || `${lat}, ${lon}`, lat, lon }); added++; }
+      }
+      if (added) save(STORE_KEY, locations);
+    } catch {}
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  const shareBtn = $('#share');
+  shareBtn.addEventListener('click', async () => {
+    if (!locations.length) { flash(shareBtn, 'add a place first'); return; }
+    const link = placesLink();
+    try { await navigator.clipboard.writeText(link); flash(shareBtn, 'copied'); }
+    catch { window.prompt('Copy this link and open it on your other device:', link); }
+  });
+  function flash(btn, msg) { const old = btn.textContent; btn.textContent = msg; setTimeout(() => { btn.textContent = old; }, 1600); }
+  importFromHash();
+
+  $('#refresh').addEventListener('click', () => loadAll(true));
+  setInterval(() => { render(); }, 60000);
+  setInterval(() => { loadAll(false); }, CACHE_TTL);
+
+  render();
+  loadAll(false);
+})();
+</script>
+</body>
+</html>
