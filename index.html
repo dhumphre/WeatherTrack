@@ -101,6 +101,10 @@
   .meta { color: var(--ink-3); font-size: 13px; text-align: right; }
   .meta button { font: inherit; color: var(--accent-ink); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
   .meta button:hover { color: var(--accent); }
+  #account[data-state="out"] .who-wrap { display: none; }
+  #account[data-state="in"] #signin { display: none; }
+  #who { color: var(--ink-2); }
+  .syncmsg { margin-top: 4px; color: var(--serious); font-size: 12.5px; }
 
   /* ---------- Day tabs ---------- */
   .days { display: flex; gap: 6px; border-bottom: 1px solid var(--rule); margin-bottom: 22px; overflow-x: auto; }
@@ -230,7 +234,8 @@
       <p>Where the weather will be kind, one to three days out. Keep an eye on a few places within reach and let the best sky pick the hike.</p>
     </div>
     <div class="meta" id="meta">
-      <span id="updated">—</span> · <button id="refresh" type="button">refresh</button> · <button id="theme" type="button">theme</button> · <button id="share" type="button" title="Copy a link that carries your places to another device">copy link with places</button>
+      <span id="updated">—</span> · <button id="refresh" type="button">refresh</button> · <button id="theme" type="button">theme</button> · <button id="share" type="button" title="Copy a link that carries your places to another device">copy link with places</button><span id="account" data-state="out" hidden> · <button id="signin" type="button" title="Sign in with Google to keep your places on every device">sign in to sync</button><span class="who-wrap"><span id="who"></span> · <button id="signout" type="button">sign out</button></span></span>
+      <div id="syncmsg" class="syncmsg" hidden></div>
     </div>
   </header>
 
@@ -254,7 +259,7 @@
 
   <footer>
     <span>Forecasts: <a href="https://www.weather.gov/" target="_blank" rel="noopener">National Weather Service</a> (api.weather.gov). Place search: OpenStreetMap Nominatim.</span>
-    <span>Your places are saved in this browser only.</span>
+    <span id="storage-note">Your places are saved in this browser only.</span>
   </footer>
 </div>
 
@@ -288,6 +293,41 @@
   function load(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
   const uid = () => Math.random().toString(36).slice(2, 10);
+
+  // persist(): the place list changed by the user's hand (add, remove, rename, import).
+  // Saves locally and tells the optional sync layer. Forecast point lookups use save() directly
+  // so they never trigger a cloud write.
+  const changeListeners = [];
+  function exportPlaces() { return locations.map(l => ({ id: l.id, name: l.name, lat: l.lat, lon: l.lon })); }
+  function persist() {
+    save(STORE_KEY, locations);
+    const snapshot = exportPlaces();
+    for (const fn of changeListeners) { try { fn(snapshot); } catch {} }
+  }
+  // applyRemote(): the authoritative list arrived from the user's account. Keep any forecast
+  // lookups we already have for places that are still present, drop caches for the rest.
+  function applyRemote(list) {
+    if (!Array.isArray(list)) return;
+    const next = [];
+    for (const p of list) {
+      if (!p || typeof p.lat !== 'number' || typeof p.lon !== 'number' || !isFinite(p.lat) || !isFinite(p.lon)) continue;
+      const prev = locations.find(l => l.id === p.id) || locations.find(l => Math.abs(l.lat - p.lat) < 0.0005 && Math.abs(l.lon - p.lon) < 0.0005);
+      const id = typeof p.id === 'string' && p.id ? p.id : uid();
+      const loc = { id, name: String(p.name || '').slice(0, 60) || `${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}`, lat: p.lat, lon: p.lon };
+      if (prev && prev.point) loc.point = prev.point;
+      if (prev && prev.id !== id) {
+        const cached = load(CACHE_PREFIX + prev.id, null);
+        if (cached) save(CACHE_PREFIX + id, cached);
+      }
+      next.push(loc);
+    }
+    for (const l of locations) if (!next.some(n => n.id === l.id)) { data.delete(l.id); try { localStorage.removeItem(CACHE_PREFIX + l.id); } catch {} }
+    locations = next;
+    save(STORE_KEY, locations);
+    render();
+    loadAll(false);
+  }
+  window.almanac = { getPlaces: exportPlaces, applyRemote, onChange: fn => changeListeners.push(fn) };
 
   // ---------- theme ----------
   $('#theme').addEventListener('click', () => {
@@ -550,7 +590,7 @@
     const body = el('div', { class: 'body' });
     const name = el('h2', { class: 'name', title: 'Click to rename' }, loc.name);
     name.addEventListener('click', () => { if (name.contentEditable !== 'true') { name.contentEditable = 'true'; name.focus(); document.getSelection().selectAllChildren(name); } });
-    name.addEventListener('blur', () => { name.contentEditable = 'false'; const v = name.textContent.trim(); if (v && v !== loc.name) { loc.name = v; save(STORE_KEY, locations); render(); } else name.textContent = loc.name; });
+    name.addEventListener('blur', () => { name.contentEditable = 'false'; const v = name.textContent.trim(); if (v && v !== loc.name) { loc.name = v; persist(); render(); } else name.textContent = loc.name; });
     name.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } if (e.key === 'Escape') { name.textContent = loc.name; name.blur(); } });
     const title = el('div', { class: 'titleline' }, name);
     if (day) title.append(el('span', { class: 'verdict', style: `color: var(--${day.verdict[1]})` }, el('i'), `${day.verdict[0]} · ${CAT_NAMES[day.cat]}`));
@@ -587,13 +627,13 @@
   // ---------- locations ----------
   function addLocation(name, lat, lon) {
     const loc = { id: uid(), name, lat, lon };
-    locations.push(loc); save(STORE_KEY, locations);
+    locations.push(loc); persist();
     render(); loadLocation(loc, true);
   }
   function removeLocation(id) {
     const loc = locations.find(l => l.id === id);
     if (!loc || !confirm(`Remove ${loc.name}?`)) return;
-    locations = locations.filter(l => l.id !== id); save(STORE_KEY, locations);
+    locations = locations.filter(l => l.id !== id); persist();
     try { localStorage.removeItem(CACHE_PREFIX + id); } catch {}
     data.delete(id); render();
   }
@@ -664,7 +704,7 @@
         const dup = locations.some(l => Math.abs(l.lat - lat) < 0.002 && Math.abs(l.lon - lon) < 0.002);
         if (!dup) { locations.push({ id: uid(), name: String(name).slice(0, 60) || `${lat}, ${lon}`, lat, lon }); added++; }
       }
-      if (added) save(STORE_KEY, locations);
+      if (added) persist();
     } catch {}
     history.replaceState(null, '', location.pathname + location.search);
   }
@@ -684,6 +724,92 @@
 
   render();
   loadAll(false);
+})();
+</script>
+
+<!-- Optional account sync. Paste the firebaseConfig object from the Firebase console
+     (Project settings → Your apps → Web app) in place of null. These keys identify the
+     project and are meant to be public; access is controlled by Firestore rules. -->
+<script type="module">
+const FIREBASE_CONFIG = null;
+
+if (FIREBASE_CONFIG && window.almanac) (async () => {
+  const V = '11.10.0';
+  const [{ initializeApp }, A, F] = await Promise.all([
+    import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`),
+    import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`),
+    import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`)
+  ]);
+  const app = initializeApp(FIREBASE_CONFIG);
+  const auth = A.getAuth(app);
+  const db = F.getFirestore(app);
+  const provider = new A.GoogleAuthProvider();
+
+  const $ = id => document.getElementById(id);
+  const box = $('account'), who = $('who'), msg = $('syncmsg'), note = $('storage-note');
+  box.hidden = false;
+
+  function status(text) { msg.textContent = text || ''; msg.hidden = !text; }
+  const key = places => JSON.stringify(places.map(p => [p.id, p.name, +Number(p.lat).toFixed(4), +Number(p.lon).toFixed(4)]));
+  const near = (a, b) => Math.abs(a.lat - b.lat) < 0.0005 && Math.abs(a.lon - b.lon) < 0.0005;
+  const clean = places => places.map(p => ({ id: p.id, name: p.name, lat: p.lat, lon: p.lon }));
+
+  let unsub = null;
+  function unsubscribe() { if (unsub) { unsub(); unsub = null; } }
+
+  async function write(user, places) {
+    await F.setDoc(F.doc(db, 'users', user.uid), { places: clean(places), updatedAt: F.serverTimestamp() });
+  }
+
+  $('signin').addEventListener('click', async () => {
+    status('');
+    try { await A.signInWithPopup(auth, provider); }
+    catch (e) {
+      const code = e && e.code || '';
+      if (/popup-blocked|popup-closed|cancelled-popup|operation-not-supported/.test(code)) {
+        try { await A.signInWithRedirect(auth, provider); } catch (e2) { status(`Sign-in failed (${e2.code || e2.message}).`); }
+      } else if (code === 'auth/unauthorized-domain') {
+        status('Sign-in failed: this site is not in the Firebase authorized domains list.');
+      } else status(`Sign-in failed (${code || e.message}).`);
+    }
+  });
+  $('signout').addEventListener('click', () => { unsubscribe(); A.signOut(auth); });
+
+  // Local edits flow up to the account while signed in.
+  window.almanac.onChange(places => {
+    const user = auth.currentUser;
+    if (!user) return;
+    write(user, places).then(() => status('')).catch(e => status(`Couldn't save to your account (${e.code || e.message}).`));
+  });
+
+  A.onAuthStateChanged(auth, async user => {
+    unsubscribe();
+    if (!user) {
+      box.dataset.state = 'out'; who.textContent = '';
+      note.textContent = 'Your places are saved in this browser only. Sign in to keep them on every device.';
+      return;
+    }
+    box.dataset.state = 'in';
+    who.textContent = user.displayName || user.email || 'signed in';
+    note.textContent = 'Your places are synced to your account.';
+    const ref = F.doc(db, 'users', user.uid);
+    try {
+      const snap = await F.getDoc(ref);
+      const cloud = snap.exists() && Array.isArray(snap.data().places) ? snap.data().places : [];
+      // First contact on this device: keep the account's list and add anything local it lacks.
+      const merged = [...cloud];
+      for (const p of window.almanac.getPlaces()) if (!merged.some(c => near(c, p))) merged.push(p);
+      if (key(merged) !== key(cloud)) await write(user, merged);
+      window.almanac.applyRemote(merged);
+      unsub = F.onSnapshot(ref, s => {
+        if (s.metadata.hasPendingWrites) return;
+        const places = s.exists() && Array.isArray(s.data().places) ? s.data().places : [];
+        if (key(places) !== key(window.almanac.getPlaces())) window.almanac.applyRemote(places);
+      }, e => status(`Live sync stopped (${e.code || e.message}).`));
+    } catch (e) {
+      status(`Couldn't load your places (${e.code || e.message}).`);
+    }
+  });
 })();
 </script>
 </body>
