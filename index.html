@@ -179,6 +179,9 @@
   .name[contenteditable="true"] { outline: none; border-bottom-color: var(--accent); }
   .verdict { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; letter-spacing: .02em; }
   .verdict i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; display: inline-block; }
+  .alert { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--serious); padding: 2px 8px; border: 1px solid currentColor; border-radius: 10px; }
+  .aqdot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+  .ribbon .h .aq { position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 2px; opacity: .9; }
   .place { color: var(--ink-3); font-size: 12.5px; margin: 0 0 10px; }
 
   .stats { display: flex; gap: 22px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -254,11 +257,11 @@
 
   <details class="how">
     <summary>How the hike score is figured</summary>
-    <p>Each day is judged on its daylight hours (7am–7pm, local to the place). It starts at 100 and loses points for the chance of rain or snow, for wind over about 10&nbsp;mph, for highs above 85°F or below 40°F, for frosty mornings, and extra for thunderstorms, snow and fog. 80 and up is <b>Prime</b>, 60 is <b>Good</b>, 40 is <b>Fair</b>, 20 is <b>Poor</b>, below that <b>Skip</b>. Places are listed best first for the selected day.</p>
+    <p>Each day is judged on its daylight hours (7am–7pm, local to the place). It starts at 100 and loses points for the chance of rain or snow, for wind over about 10&nbsp;mph, for highs above 85°F or below 40°F, for frosty mornings, and extra for thunderstorms, snow and fog. Air quality costs nothing up to an AQI of 50, a little through 100, and a lot above 150, where smoke makes a hike unwise. 80 and up is <b>Prime</b>, 60 is <b>Good</b>, 40 is <b>Fair</b>, 20 is <b>Poor</b>, below that <b>Skip</b>. Places are listed best first for the selected day.</p>
   </details>
 
   <footer>
-    <span>Forecasts: <a href="https://www.weather.gov/" target="_blank" rel="noopener">National Weather Service</a> (api.weather.gov). Place search: OpenStreetMap Nominatim.</span>
+    <span>Forecasts: <a href="https://www.weather.gov/" target="_blank" rel="noopener">National Weather Service</a> (api.weather.gov). Air quality: <a href="https://open-meteo.com/en/docs/air-quality-api" target="_blank" rel="noopener">Open-Meteo</a>. Place search: OpenStreetMap Nominatim.</span>
     <span id="storage-note">Your places are saved in this browser only.</span>
   </footer>
 </div>
@@ -267,6 +270,7 @@
 (() => {
   'use strict';
   const NWS = 'https://api.weather.gov';
+  const AQ = 'https://air-quality-api.open-meteo.com/v1/air-quality';
   const STORE_KEY = 'ta.locations.v1';
   const CACHE_PREFIX = 'ta.cache.v1.';
   const CACHE_TTL = 30 * 60 * 1000;
@@ -380,15 +384,28 @@
     render();
     try {
       const point = await resolvePoint(loc);
-      const [forecast, hourly] = await Promise.all([getJSON(point.forecast), getJSON(point.hourly)]);
-      const rec = { point, forecast: forecast.properties, hourly: hourly.properties, fetchedAt: Date.now() };
+      // Air quality and alerts are extras: if either fails the card still renders.
+      const quiet = p => p.catch(() => null);
+      const [forecast, hourly, aq, alerts] = await Promise.all([
+        getJSON(point.forecast), getJSON(point.hourly),
+        quiet(getJSON(`${AQ}?latitude=${loc.lat.toFixed(4)}&longitude=${loc.lon.toFixed(4)}&hourly=us_aqi,pm2_5&forecast_days=5&timezone=${encodeURIComponent(point.tz || 'auto')}`, 2)),
+        quiet(getJSON(`${NWS}/alerts/active?point=${loc.lat.toFixed(4)},${loc.lon.toFixed(4)}`, 2))
+      ]);
+      const rec = {
+        point, forecast: forecast.properties, hourly: hourly.properties, fetchedAt: Date.now(),
+        aq: aq && aq.hourly ? { time: aq.hourly.time, aqi: aq.hourly.us_aqi, pm25: aq.hourly.pm2_5 } : null,
+        alerts: alerts && Array.isArray(alerts.features)
+          ? alerts.features.map(f => f.properties || {}).filter(p => /air quality|smoke/i.test(`${p.event} ${p.headline}`))
+              .map(p => ({ event: p.event, headline: p.headline, ends: p.ends || p.expires }))
+          : []
+      };
       data.set(loc.id, rec);
-      save(CACHE_PREFIX + loc.id, { forecast: rec.forecast, hourly: rec.hourly, fetchedAt: rec.fetchedAt });
+      save(CACHE_PREFIX + loc.id, { forecast: rec.forecast, hourly: rec.hourly, aq: rec.aq, alerts: rec.alerts, fetchedAt: rec.fetchedAt });
     } catch (e) {
       const msg = e.status === 404
         ? 'Outside National Weather Service coverage (US only).'
         : `Couldn’t reach the forecast service (${e.message}). Try refresh.`;
-      data.set(loc.id, { error: msg, point: loc.point, ...(cached ? { forecast: cached.forecast, hourly: cached.hourly, fetchedAt: cached.fetchedAt } : {}) });
+      data.set(loc.id, { error: msg, point: loc.point, ...(cached ? { forecast: cached.forecast, hourly: cached.hourly, aq: cached.aq, alerts: cached.alerts, fetchedAt: cached.fetchedAt } : {}) });
     }
     render();
   }
@@ -434,6 +451,33 @@
   };
   const CAT_NAMES = { clear: 'Clear', partly: 'Partly cloudy', cloudy: 'Cloudy', fog: 'Fog or haze', rain: 'Rain', snow: 'Snow or ice', storm: 'Thunderstorms' };
 
+  // EPA Air Quality Index bands. Colors are the EPA's own, used only as a marker next to ink text.
+  const AQI_BANDS = [
+    [50, 'Good', '#4caf50'], [100, 'Moderate', '#d9b920'], [150, 'Unhealthy for sensitive groups', '#f28b2e'],
+    [200, 'Unhealthy', '#e2443e'], [300, 'Very unhealthy', '#8f3f97'], [Infinity, 'Hazardous', '#7e0023']
+  ];
+  function aqiBand(v) { return AQI_BANDS.find(b => v <= b[0]); }
+  function aqiPenalty(v) {
+    if (v == null || v <= 50) return 0;
+    if (v <= 100) return (v - 50) * 0.2;            // up to 10
+    if (v <= 150) return 10 + (v - 100) * 0.5;      // up to 35
+    if (v <= 200) return 35 + (v - 150) * 0.7;      // up to 70
+    return 70 + (v - 200) * 0.3;
+  }
+  function aqiForDay(rec, key) {
+    if (!rec.aq || !rec.aq.time) return null;
+    const byHour = {}; let max = null, pm = null;
+    rec.aq.time.forEach((t, i) => {
+      if (t.slice(0, 10) !== key) return;
+      const h = Number(t.slice(11, 13)); if (h < DAY_START || h > DAY_END) return;
+      const v = rec.aq.aqi[i]; if (v == null) return;
+      byHour[h] = v; if (max == null || v > max) max = v;
+      const p = rec.aq.pm25 && rec.aq.pm25[i]; if (p != null && (pm == null || p > pm)) pm = p;
+    });
+    if (max == null) return null;
+    return { max: Math.round(max), pm25: pm == null ? null : Math.round(pm), band: aqiBand(max), byHour };
+  }
+
   function parseWind(s) { // "10 mph" or "5 to 15 mph"
     if (!s) return 0; const m = String(s).match(/(\d+)(?:\s*to\s*(\d+))?/); if (!m) return 0; return Number(m[2] || m[1]);
   }
@@ -468,10 +512,12 @@
     if (hi < 40) s -= (40 - hi) * 1.5;
     if (lo < 32) s -= (32 - lo) * 0.8;
     if (cat === 'storm') s -= 35; else if (cat === 'snow') s -= 20; else if (cat === 'fog') s -= 8; else if (cat === 'cloudy') s -= 4;
+    const aqi = aqiForDay(rec, key);
+    if (aqi) s -= aqiPenalty(aqi.max);
     const score = Math.round(Math.max(0, Math.min(100, s)));
     const verdict = score >= 80 ? ['Prime', 'good'] : score >= 60 ? ['Good', 'good'] : score >= 40 ? ['Fair', 'warn'] : score >= 20 ? ['Poor', 'serious'] : ['Skip', 'critical'];
 
-    return { hours, hi, lo, popMax: Math.round(popMax), popAvg, windMax, humidity, cat, score, verdict,
+    return { hours, hi, lo, popMax: Math.round(popMax), popAvg, windMax, humidity, cat, score, verdict, aqi,
       text: period ? period.detailedForecast : (hours[Math.floor(hours.length / 2)].shortForecast),
       short: period ? period.shortForecast : hours[Math.floor(hours.length / 2)].shortForecast,
       name: period ? period.name : '' };
@@ -490,7 +536,8 @@
     drop: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>',
     temp: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M10 14.5V5a2 2 0 1 1 4 0v9.5a3.5 3.5 0 1 1-4 0z"/></svg>',
     humid: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 9c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 15c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>',
-    x: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+    x: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    alert: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L2 20h20L12 3z"/><path d="M12 10v4M12 17v.01"/></svg>'
   };
   const CAT_ICON = { clear: I.sun, partly: I.partly, cloudy: I.cloud, fog: I.fog, rain: I.rain, snow: I.snow, storm: I.storm };
 
@@ -525,14 +572,16 @@
       const pp = pop(p);
       const t = p.temperature;
       const height = Math.max(12, Math.min(100, ((t - 5) / 95) * 100));
-      const title = `${fmtHour(h)} · ${t}° · ${p.shortForecast} · ${pp}% precip · wind ${p.windSpeed || '—'}`;
-      cells.push(`<div class="h" title="${title.replace(/"/g, '&quot;')}"><div class="bar" style="height:${height}%;background:linear-gradient(180deg,${CAT_COLORS[cat][0]},${CAT_COLORS[cat][1]})"></div>${pp >= 20 ? `<div class="pop" style="height:${Math.max(6, pp)}%"></div>` : ''}</div>`);
+      const a = day.aqi && day.aqi.byHour[h];
+      const title = `${fmtHour(h)} · ${t}° · ${p.shortForecast} · ${pp}% precip · wind ${p.windSpeed || '—'}${a != null ? ` · AQI ${Math.round(a)} ${aqiBand(a)[1]}` : ''}`;
+      cells.push(`<div class="h" title="${title.replace(/"/g, '&quot;')}">${a != null ? `<div class="aq" style="background:${aqiBand(a)[2]}"></div>` : ''}<div class="bar" style="height:${height}%;background:linear-gradient(180deg,${CAT_COLORS[cat][0]},${CAT_COLORS[cat][1]})"></div>${pp >= 20 ? `<div class="pop" style="height:${Math.max(6, pp)}%"></div>` : ''}</div>`);
     }
     const labels = []; for (let h = DAY_START; h <= DAY_END; h++) labels.push(`<span>${(h - DAY_START) % 3 === 0 ? fmtHour(h) : ''}</span>`);
     const seen = [...new Set(hours.map(h => categorize(h.shortForecast)))].sort((a, b) => CATS.indexOf(a) - CATS.indexOf(b));
     const legend = seen.map(c => `<span><i style="background:linear-gradient(180deg,${CAT_COLORS[c][0]},${CAT_COLORS[c][1]})"></i>${CAT_NAMES[c]}</span>`).join('')
       + (hours.some(h => pop(h) >= 20) ? `<span><i style="background:repeating-linear-gradient(135deg, rgba(60,90,130,.55) 0 2px, transparent 2px 5px)"></i>Chance of precip</span>` : '');
-    return `<div class="ribbon">${cells.join('')}</div><div class="ribbon-labels">${labels.join('')}</div><div class="ribbon-legend">${legend}<span style="margin-left:auto">Bar height follows temperature</span></div>`;
+    const aqNote = day.aqi ? ' · top stripe is air quality' : '';
+    return `<div class="ribbon">${cells.join('')}</div><div class="ribbon-labels">${labels.join('')}</div><div class="ribbon-legend">${legend}<span style="margin-left:auto">Bar height follows temperature${aqNote}</span></div>`;
   }
   function fmtHour(h) { return h === 12 ? '12p' : h > 12 ? `${h - 12}p` : `${h}a`; }
 
@@ -594,6 +643,10 @@
     name.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } if (e.key === 'Escape') { name.textContent = loc.name; name.blur(); } });
     const title = el('div', { class: 'titleline' }, name);
     if (day) title.append(el('span', { class: 'verdict', style: `color: var(--${day.verdict[1]})` }, el('i'), `${day.verdict[0]} · ${CAT_NAMES[day.cat]}`));
+    if (rec && rec.alerts && rec.alerts.length) {
+      const a = rec.alerts[0];
+      title.append(el('span', { class: 'alert', title: a.headline || a.event, html: I.alert + ' ' }, a.event || 'Air Quality Alert'));
+    }
     body.append(title);
 
     const near = rec && rec.point && rec.point.near ? `near ${rec.point.near} · ` : '';
@@ -610,6 +663,11 @@
       stats.append(stat(I.drop, `${day.popMax}<small>%</small>`, 'chance precip'));
       stats.append(stat(I.wind, `${day.windMax}<small> mph</small>`, 'wind, up to'));
       if (day.humidity != null) stats.append(stat(I.humid, `${day.humidity}<small>%</small>`, 'humidity'));
+      if (day.aqi) {
+        const s = stat(`<span class="aqdot" style="background:${day.aqi.band[2]}"></span>`, `${day.aqi.max}`, `AQI · ${day.aqi.band[1]}`);
+        s.title = `Worst daytime US Air Quality Index${day.aqi.pm25 != null ? ` · PM2.5 up to ${day.aqi.pm25} µg/m³` : ''} · Open-Meteo forecast`;
+        stats.append(s);
+      }
       body.append(stats);
       body.append(el('p', { class: 'forecast' }, day.text));
       body.append(el('div', { html: ribbon(day) }));
