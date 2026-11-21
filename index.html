@@ -181,7 +181,7 @@
   .verdict i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; display: inline-block; }
   .alert { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--serious); padding: 2px 8px; border: 1px solid currentColor; border-radius: 10px; }
   .aqdot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
-  .ribbon .h .aq { position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 2px; opacity: .9; }
+  .ribbon .h .aq { position: absolute; top: 0; left: 50%; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
   .place { color: var(--ink-3); font-size: 12.5px; margin: 0 0 10px; }
 
   .stats { display: flex; gap: 22px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -580,7 +580,7 @@
     const seen = [...new Set(hours.map(h => categorize(h.shortForecast)))].sort((a, b) => CATS.indexOf(a) - CATS.indexOf(b));
     const legend = seen.map(c => `<span><i style="background:linear-gradient(180deg,${CAT_COLORS[c][0]},${CAT_COLORS[c][1]})"></i>${CAT_NAMES[c]}</span>`).join('')
       + (hours.some(h => pop(h) >= 20) ? `<span><i style="background:repeating-linear-gradient(135deg, rgba(60,90,130,.55) 0 2px, transparent 2px 5px)"></i>Chance of precip</span>` : '');
-    const aqNote = day.aqi ? ' · top stripe is air quality' : '';
+    const aqNote = day.aqi ? ' · dots are air quality' : '';
     return `<div class="ribbon">${cells.join('')}</div><div class="ribbon-labels">${labels.join('')}</div><div class="ribbon-legend">${legend}<span style="margin-left:auto">Bar height follows temperature${aqNote}</span></div>`;
   }
   function fmtHour(h) { return h === 12 ? '12p' : h > 12 ? `${h - 12}p` : `${h}a`; }
