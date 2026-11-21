@@ -239,7 +239,7 @@
   <div class="addbar">
     <div class="field">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>
-      <input id="q" type="text" placeholder="Add a place: a town, a park, a trailhead, or “45.37, -121.70”" autocomplete="off" spellcheck="false">
+      <input id="q" type="text" placeholder="Add a place: a town, a park, a trailhead, or “Elk Meadows 45.37, -121.70”" autocomplete="off" spellcheck="false">
       <span class="hint">Enter to search</span>
     </div>
     <div class="results" id="results" hidden></div>
@@ -609,13 +609,20 @@
 
   async function search(text) {
     text = text.trim(); if (!text) return;
-    const m = text.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
+    // Coordinates anywhere in the text; whatever is left over becomes the name.
+    // Accepts "45.37, -121.70", "Elk Meadows 45.37, -121.70", "45.37 -121.70 Elk Meadows", "Elk Meadows: 45.37,-121.70".
+    const m = text.match(/(-?\d{1,2}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)/);
     if (m) {
       const lat = Number(m[1]), lon = Number(m[2]);
-      results.hidden = false;
-      results.replaceChildren(el('button', { type: 'button', onclick: () => { addLocation(`${lat.toFixed(3)}, ${lon.toFixed(3)}`, lat, lon); q.value = ''; hideResults(); } },
-        `Add point ${lat.toFixed(4)}, ${lon.toFixed(4)}`, el('small', {}, 'You can rename it afterwards')));
-      return;
+      if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+        const label = text.replace(m[0], ' ').replace(/[\s:;@–—-]+$/g, '').replace(/^[\s:;@–—-]+/g, '').replace(/\s+/g, ' ').trim();
+        const name = label || `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+        results.hidden = false;
+        results.replaceChildren(el('button', { type: 'button', onclick: () => { addLocation(name, lat, lon); q.value = ''; hideResults(); } },
+          label ? `Add “${label}”` : 'Add this point',
+          el('small', {}, `${lat.toFixed(4)}, ${lon.toFixed(4)}${label ? '' : ' · tip: type a name before the coordinates, or click the title later to rename'}`)));
+        return;
+      }
     }
     showStatus('Searching…');
     try {
